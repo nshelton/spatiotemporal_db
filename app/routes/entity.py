@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends
 
 from app.auth import verify_api_key
 from app.db import get_connection
-from app.models import EntityIn, EntityResponse
+from app.models import BatchEntityResponse, EntityIn, EntityResponse
 
 router = APIRouter(prefix="/v1", tags=["entity"])
 
@@ -94,3 +94,61 @@ async def create_entity(
             status = "inserted"
 
     return EntityResponse(id=UUID(str(entity_id)), status=status)
+
+
+@router.post("/entities/batch", response_model=BatchEntityResponse)
+async def create_entities_batch(
+    entities: list[EntityIn],
+    _api_key: str = Depends(verify_api_key),
+) -> BatchEntityResponse:
+    """
+    Batch create/update entities.
+
+    Accepts up to 1000 entities per request. Uses pipelined execution
+    within a single transaction for high throughput.
+    """
+    if len(entities) > 1000:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail="Maximum 1000 entities per batch")
+
+    inserted = 0
+    updated = 0
+    errors = 0
+
+    async with get_connection() as conn:
+        async with conn.transaction():
+            for entity in entities:
+                try:
+                    payload_json = json.dumps(entity.payload) if entity.payload else None
+                    params = (
+                        entity.type,
+                        entity.t_start,
+                        entity.t_end,
+                        entity.lat,
+                        entity.lon,
+                        entity.name,
+                        entity.color,
+                        entity.render_offset,
+                        entity.source,
+                        entity.external_id,
+                        payload_json,
+                    )
+
+                    if entity.source is not None and entity.external_id is not None:
+                        row = await conn.fetchrow(UPSERT_SQL, *params)
+                        if row["inserted"]:
+                            inserted += 1
+                        else:
+                            updated += 1
+                    else:
+                        await conn.fetchrow(INSERT_SQL, *params)
+                        inserted += 1
+                except Exception:
+                    errors += 1
+
+    return BatchEntityResponse(
+        inserted=inserted,
+        updated=updated,
+        errors=errors,
+        total=inserted + updated + errors,
+    )

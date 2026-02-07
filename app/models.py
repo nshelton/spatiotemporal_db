@@ -60,6 +60,15 @@ class EntityResponse(BaseModel):
     status: Literal["inserted", "updated"]
 
 
+class BatchEntityResponse(BaseModel):
+    """Response for batch entity operations."""
+
+    inserted: int
+    updated: int
+    errors: int
+    total: int
+
+
 # --- Query Models ---
 
 
