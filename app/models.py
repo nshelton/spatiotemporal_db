@@ -112,7 +112,7 @@ class BBoxQueryRequest(BaseModel):
     )
     time: TimeWindow | None = Field(None, description="Optional time window filter")
     limit: int = Field(5000, ge=1, le=10000, description="Maximum results to return")
-    order: Literal["t_start_asc", "t_start_desc"] = "t_start_desc"
+    order: Literal["t_start_asc", "t_start_desc", "random"] = "t_start_desc"
 
     @model_validator(mode="after")
     def validate_bbox(self) -> "BBoxQueryRequest":

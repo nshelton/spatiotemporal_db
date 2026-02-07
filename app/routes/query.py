@@ -136,7 +136,7 @@ WHERE type = ANY($1)
   AND geom IS NOT NULL
   AND geom && ST_MakeEnvelope($2, $3, $4, $5, 4326)
   AND t_range && tstzrange($6, $7, '[]')
-ORDER BY t_start {order}
+ORDER BY {order}
 LIMIT $8;
 """
 
@@ -149,7 +149,7 @@ FROM entities
 WHERE type = ANY($1)
   AND geom IS NOT NULL
   AND geom && ST_MakeEnvelope($2, $3, $4, $5, 4326)
-ORDER BY t_start {order}
+ORDER BY {order}
 LIMIT $6;
 """
 
@@ -164,13 +164,21 @@ async def query_by_bbox(
 
     Returns entities with locations within the specified bbox.
     Optionally filters by time window.
+
+    Use order="random" for uniformly distributed random sampling.
     """
     min_lon, min_lat, max_lon, max_lat = query.bbox
-    order_dir = "ASC" if query.order == "t_start_asc" else "DESC"
+
+    # Determine ordering
+    if query.order == "random":
+        order_clause = "RANDOM()"
+    else:
+        order_dir = "ASC" if query.order == "t_start_asc" else "DESC"
+        order_clause = f"t_start {order_dir}"
 
     async with get_connection() as conn:
         if query.time:
-            sql = BBOX_QUERY_SQL.format(order=order_dir)
+            sql = BBOX_QUERY_SQL.format(order=order_clause)
             rows = await conn.fetch(
                 sql,
                 query.types,
@@ -183,7 +191,7 @@ async def query_by_bbox(
                 query.limit,
             )
         else:
-            sql = BBOX_QUERY_NO_TIME_SQL.format(order=order_dir)
+            sql = BBOX_QUERY_NO_TIME_SQL.format(order=order_clause)
             rows = await conn.fetch(
                 sql,
                 query.types,

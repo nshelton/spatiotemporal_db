@@ -11,12 +11,9 @@ router = APIRouter(prefix="/v1", tags=["entity"])
 
 # SQL for upsert with ON CONFLICT
 UPSERT_SQL = """
-INSERT INTO entities (type, t_start, t_end, geom, name, color, render_offset, source, external_id, payload)
+INSERT INTO entities (type, t_start, t_end, lat, lon, name, color, render_offset, source, external_id, payload)
 VALUES (
-  $1, $2, $3,
-  CASE WHEN $4::float IS NULL OR $5::float IS NULL THEN NULL
-       ELSE ST_SetSRID(ST_MakePoint($5, $4), 4326) END,
-  $6, $7, $8, $9, $10, $11::jsonb
+  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb
 )
 ON CONFLICT (source, external_id)
 WHERE source IS NOT NULL AND external_id IS NOT NULL
@@ -24,7 +21,8 @@ DO UPDATE SET
   type = EXCLUDED.type,
   t_start = EXCLUDED.t_start,
   t_end = EXCLUDED.t_end,
-  geom = EXCLUDED.geom,
+  lat = EXCLUDED.lat,
+  lon = EXCLUDED.lon,
   name = EXCLUDED.name,
   color = EXCLUDED.color,
   render_offset = EXCLUDED.render_offset,
@@ -35,12 +33,9 @@ RETURNING id, (xmax = 0) AS inserted;
 
 # SQL for simple insert (when no source/external_id)
 INSERT_SQL = """
-INSERT INTO entities (type, t_start, t_end, geom, name, color, render_offset, source, external_id, payload)
+INSERT INTO entities (type, t_start, t_end, lat, lon, name, color, render_offset, source, external_id, payload)
 VALUES (
-  $1, $2, $3,
-  CASE WHEN $4::float IS NULL OR $5::float IS NULL THEN NULL
-       ELSE ST_SetSRID(ST_MakePoint($5, $4), 4326) END,
-  $6, $7, $8, $9, $10, $11::jsonb
+  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb
 )
 RETURNING id;
 """
