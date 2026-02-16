@@ -21,6 +21,7 @@ class EntityIn(BaseModel):
     render_offset: float | None = None
     source: str | None = Field(None, description="Source identifier for idempotent upserts")
     external_id: str | None = Field(None, description="External ID from source for idempotent upserts")
+    loc_source: str | None = Field(None, description="Location provenance: 'native' or 'inferred'")
     payload: dict[str, Any] | None = Field(None, description="Type-specific JSON data")
 
     @model_validator(mode="after")
@@ -50,6 +51,7 @@ class EntityOut(BaseModel):
     render_offset: float | None = None
     source: str | None = None
     external_id: str | None = None
+    loc_source: str | None = None
     payload: dict[str, Any] | None = None
 
 

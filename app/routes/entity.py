@@ -11,9 +11,9 @@ router = APIRouter(prefix="/v1", tags=["entity"])
 
 # SQL for upsert with ON CONFLICT
 UPSERT_SQL = """
-INSERT INTO entities (type, t_start, t_end, lat, lon, name, color, render_offset, source, external_id, payload)
+INSERT INTO entities (type, t_start, t_end, lat, lon, name, color, render_offset, source, external_id, loc_source, payload)
 VALUES (
-  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb
+  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb
 )
 ON CONFLICT (source, external_id)
 WHERE source IS NOT NULL AND external_id IS NOT NULL
@@ -26,6 +26,7 @@ DO UPDATE SET
   name = EXCLUDED.name,
   color = EXCLUDED.color,
   render_offset = EXCLUDED.render_offset,
+  loc_source = EXCLUDED.loc_source,
   payload = EXCLUDED.payload,
   updated_at = now()
 RETURNING id, (xmax = 0) AS inserted;
@@ -33,9 +34,9 @@ RETURNING id, (xmax = 0) AS inserted;
 
 # SQL for simple insert (when no source/external_id)
 INSERT_SQL = """
-INSERT INTO entities (type, t_start, t_end, lat, lon, name, color, render_offset, source, external_id, payload)
+INSERT INTO entities (type, t_start, t_end, lat, lon, name, color, render_offset, source, external_id, loc_source, payload)
 VALUES (
-  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb
+  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb
 )
 RETURNING id;
 """
@@ -69,6 +70,7 @@ async def create_entity(
                 entity.render_offset,
                 entity.source,
                 entity.external_id,
+                entity.loc_source,
                 payload_json,
             )
             entity_id = row["id"]
@@ -88,6 +90,7 @@ async def create_entity(
                 entity.render_offset,
                 entity.source,
                 entity.external_id,
+                entity.loc_source,
                 payload_json,
             )
             entity_id = row["id"]
@@ -131,6 +134,7 @@ async def create_entities_batch(
                         entity.render_offset,
                         entity.source,
                         entity.external_id,
+                        entity.loc_source,
                         payload_json,
                     )
 

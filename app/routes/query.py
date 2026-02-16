@@ -34,6 +34,7 @@ def _row_to_entity(row: dict) -> EntityOut:
         render_offset=row.get("render_offset"),
         source=row.get("source"),
         external_id=row.get("external_id"),
+        loc_source=row.get("loc_source"),
         payload=payload,
     )
 
@@ -44,7 +45,7 @@ TIME_QUERY_SQL = """
 SELECT id, type, t_start, t_end,
        CASE WHEN geom IS NULL THEN NULL ELSE ST_Y(geom) END AS lat,
        CASE WHEN geom IS NULL THEN NULL ELSE ST_X(geom) END AS lon,
-       name, color, render_offset, source, external_id, payload
+       name, color, render_offset, source, external_id, loc_source, payload
 FROM entities
 WHERE type = ANY($1)
   AND t_range && tstzrange($2, $3, '[]')
@@ -80,7 +81,7 @@ candidates AS (
 SELECT id, type, t_start, t_end,
        CASE WHEN geom IS NULL THEN NULL ELSE ST_Y(geom) END AS lat,
        CASE WHEN geom IS NULL THEN NULL ELSE ST_X(geom) END AS lon,
-       name, color, render_offset, source, external_id, payload
+       name, color, render_offset, source, external_id, loc_source, payload
 FROM candidates
 ORDER BY t_start ASC;
 """
@@ -130,7 +131,7 @@ BBOX_QUERY_SQL = """
 SELECT id, type, t_start, t_end,
        ST_Y(geom) AS lat,
        ST_X(geom) AS lon,
-       name, color, render_offset, source, external_id, payload
+       name, color, render_offset, source, external_id, loc_source, payload
 FROM entities
 WHERE type = ANY($1)
   AND geom IS NOT NULL
@@ -144,7 +145,7 @@ BBOX_QUERY_NO_TIME_SQL = """
 SELECT id, type, t_start, t_end,
        ST_Y(geom) AS lat,
        ST_X(geom) AS lon,
-       name, color, render_offset, source, external_id, payload
+       name, color, render_offset, source, external_id, loc_source, payload
 FROM entities
 WHERE type = ANY($1)
   AND geom IS NOT NULL
