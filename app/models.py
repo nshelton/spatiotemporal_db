@@ -145,3 +145,38 @@ class QueryResponse(BaseModel):
     """Response model for query endpoints."""
 
     entities: list[EntityOut]
+
+
+# --- Stats Models ---
+
+
+class EntityTypeStats(BaseModel):
+    """Statistics for a single entity type."""
+
+    type: str
+    count: int
+
+
+class TimeRange(BaseModel):
+    """Time range covered by entities."""
+
+    oldest: datetime | None = None
+    newest: datetime | None = None
+
+
+class DatabaseStats(BaseModel):
+    """Database statistics."""
+
+    size_mb: float
+    table_size_mb: float
+    index_size_mb: float
+
+
+class StatsResponse(BaseModel):
+    """Response model for stats endpoint."""
+
+    total_entities: int
+    entities_by_type: list[EntityTypeStats]
+    time_coverage: TimeRange
+    database: DatabaseStats
+    uptime_seconds: float

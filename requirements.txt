@@ -6,6 +6,10 @@ pydantic>=2.5.0
 pydantic-settings>=2.1.0
 python-dotenv>=1.0.0
 
+# Ingesters
+requests>=2.31.0
+tqdm>=4.66.0  # Progress bars for ingestion
+
 # Testing
 pytest>=8.0.0
 pytest-asyncio>=0.23.0

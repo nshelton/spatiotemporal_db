@@ -40,7 +40,51 @@ Write-Host "  python: $(python --version)" -ForegroundColor Green
 Write-Host "  psql:   $(psql --version)" -ForegroundColor Green
 Write-Host "  git:    $(git --version)" -ForegroundColor Green
 
-# --- Prompt for DB password ---
+# --- Prompt for passwords ---
+
+Write-Host ""
+$POSTGRES_PASSWORD = Read-Host -Prompt "Enter the password for the 'postgres' superuser" -AsSecureString
+$POSTGRES_PASSWORD_PLAIN = [Runtime.InteropServices.Marshal]::PtrToStringAuto(
+    [Runtime.InteropServices.Marshal]::SecureStringToBSTR($POSTGRES_PASSWORD)
+)
+
+if ([string]::IsNullOrWhiteSpace($POSTGRES_PASSWORD_PLAIN)) {
+    Write-Host "Password cannot be empty." -ForegroundColor Red
+    exit 1
+}
+
+# Set PGPASSWORD environment variable for psql commands
+$env:PGPASSWORD = $POSTGRES_PASSWORD_PLAIN
+
+# Optionally save to .pgpass file for future runs
+$savePgpass = Read-Host "Save postgres password for future runs? (y/n)"
+if ($savePgpass -eq "y") {
+    $pgpassDir = "$env:APPDATA\postgresql"
+    $pgpassFile = "$pgpassDir\pgpass.conf"
+
+    if (-not (Test-Path $pgpassDir)) {
+        New-Item -ItemType Directory -Path $pgpassDir -Force | Out-Null
+    }
+
+    # Format: hostname:port:database:username:password
+    $pgpassEntry = "localhost:5432:*:postgres:$POSTGRES_PASSWORD_PLAIN"
+
+    # Check if entry already exists
+    $existingContent = ""
+    if (Test-Path $pgpassFile) {
+        $existingContent = Get-Content $pgpassFile -Raw
+    }
+
+    if ($existingContent -notmatch "localhost:5432:\*:postgres:") {
+        Add-Content -Path $pgpassFile -Value $pgpassEntry
+        Write-Host "  Saved to $pgpassFile" -ForegroundColor Green
+    } else {
+        # Update existing entry
+        $updatedContent = $existingContent -replace "localhost:5432:\*:postgres:.*", $pgpassEntry
+        Set-Content -Path $pgpassFile -Value $updatedContent
+        Write-Host "  Updated existing entry in $pgpassFile" -ForegroundColor Green
+    }
+}
 
 $DB_PASSWORD = Read-Host -Prompt "Enter a password for the '$DB_USER' database user" -AsSecureString
 $DB_PASSWORD_PLAIN = [Runtime.InteropServices.Marshal]::PtrToStringAuto(
@@ -89,20 +133,32 @@ if ($dbExists -ne "1") {
     Write-Host "  Database '$DB_NAME' already exists" -ForegroundColor Yellow
 }
 
-# Enable PostGIS
-psql -U postgres -d $DB_NAME -c "CREATE EXTENSION IF NOT EXISTS postgis;"
-Write-Host "  PostGIS extension enabled" -ForegroundColor Green
+# --- Initialize database schema ---
 
-# --- Run migrations ---
+Write-Step "Initializing database schema"
 
-Write-Step "Running migrations"
-
-$migrations = Get-ChildItem -Path "$INSTALL_DIR\migrations\*.sql" | Sort-Object Name
-foreach ($m in $migrations) {
-    Write-Host "  Running $($m.Name)..." -NoNewline
-    psql $DB_URL -f $m.FullName -q 2>&1 | Out-Null
-    Write-Host " done" -ForegroundColor Green
+$schemaFile = "$INSTALL_DIR\schema.sql"
+if (-not (Test-Path $schemaFile)) {
+    Write-Host "  ERROR: schema.sql not found at $schemaFile" -ForegroundColor Red
+    exit 1
 }
+
+Write-Host "  Running schema.sql..." -NoNewline
+# Run as postgres user since schema.sql creates extensions (requires superuser)
+# Suppress NOTICE messages but capture actual errors
+$ErrorActionPreference = "Continue"
+psql -U postgres -d $DB_NAME -f $schemaFile -q 2>$null
+$exitCode = $LASTEXITCODE
+$ErrorActionPreference = "Stop"
+
+# Check for actual errors (not just NOTICE messages)
+if ($exitCode -ne 0) {
+    Write-Host " ERROR" -ForegroundColor Red
+    # Re-run without -q to show error details
+    psql -U postgres -d $DB_NAME -f $schemaFile
+    exit 1
+}
+Write-Host " done" -ForegroundColor Green
 
 # --- Python venv ---
 
@@ -227,3 +283,6 @@ Write-Host "  Still need to install manually:" -ForegroundColor Yellow
 Write-Host "    - iCloud for Windows (Microsoft Store)" -ForegroundColor Yellow
 Write-Host "    - Tailscale (tailscale.com/download)" -ForegroundColor Yellow
 Write-Host ""
+
+# Clean up password from environment
+Remove-Item Env:\PGPASSWORD -ErrorAction SilentlyContinue
