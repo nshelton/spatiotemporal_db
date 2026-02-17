@@ -78,7 +78,7 @@ class ResampleConfig(BaseModel):
     """Configuration for resampling query results."""
 
     method: Literal["none", "uniform_time"] = "none"
-    n: int | None = Field(None, ge=1, le=10000, description="Number of samples for uniform_time")
+    n: int | None = Field(None, ge=1, le=1000000, description="Number of samples for uniform_time")
 
     @model_validator(mode="after")
     def validate_resample(self) -> "ResampleConfig":
@@ -93,7 +93,7 @@ class TimeQueryRequest(BaseModel):
     types: list[str] = Field(..., min_length=1, description="Entity types to query")
     start: datetime = Field(..., description="Start of time window (UTC)")
     end: datetime = Field(..., description="End of time window (UTC)")
-    limit: int = Field(2000, ge=1, le=10000, description="Maximum results to return")
+    limit: int = Field(2000, ge=1, le=1000000, description="Maximum results to return")
     order: Literal["t_start_asc", "t_start_desc"] = "t_start_asc"
     resample: ResampleConfig | None = None
 
@@ -122,7 +122,7 @@ class BBoxQueryRequest(BaseModel):
         description="Bounding box [minLon, minLat, maxLon, maxLat]",
     )
     time: TimeWindow | None = Field(None, description="Optional time window filter")
-    limit: int = Field(5000, ge=1, le=10000, description="Maximum results to return")
+    limit: int = Field(5000, ge=1, le=1000000, description="Maximum results to return")
     order: Literal["t_start_asc", "t_start_desc", "random"] = "t_start_desc"
 
     @model_validator(mode="after")

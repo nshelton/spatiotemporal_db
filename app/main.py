@@ -1,3 +1,4 @@
+import asyncio
 import time
 from contextlib import asynccontextmanager
 
@@ -8,6 +9,11 @@ from app.routes import entity, query
 
 # Track server start time for uptime
 _start_time = time.time()
+
+# Stats cache (5-minute TTL)
+_stats_cache = None
+_stats_cache_time = 0.0
+STATS_CACHE_TTL = 300  # 5 minutes
 
 
 @asynccontextmanager
@@ -44,12 +50,24 @@ async def stats():
     Get database and API statistics.
 
     Returns entity counts by type, time coverage, database size, and uptime.
+    Cached for 5 minutes for performance.
     """
+    global _stats_cache, _stats_cache_time
+
+    # Check cache first
+    current_time = time.time()
+    if _stats_cache is not None and (current_time - _stats_cache_time) < STATS_CACHE_TTL:
+        # Update uptime in cached response
+        cached_response = _stats_cache.copy()
+        cached_response["uptime_seconds"] = round(current_time - _start_time, 1)
+        return cached_response
+
     from app.db import get_connection
     from app.models import DatabaseStats, EntityTypeStats, StatsResponse, TimeRange
 
     async with get_connection() as conn:
-        # Get total entity count and counts by type
+        # Run queries sequentially (asyncpg connections cannot handle concurrent operations)
+        # Get entity counts by type
         type_counts = await conn.fetch(
             """
             SELECT type, COUNT(*) as count
@@ -62,13 +80,16 @@ async def stats():
         # Get total count
         total_result = await conn.fetchval("SELECT COUNT(*) FROM entities")
 
-        # Get time range covered by entities
-        time_range = await conn.fetchrow(
+        # Get oldest timestamp (uses index efficiently)
+        oldest = await conn.fetchval("SELECT MIN(t_start) FROM entities")
+
+        # Get newest timestamp (optimized to use indexes)
+        newest = await conn.fetchval(
             """
-            SELECT
-                MIN(t_start) as oldest,
-                MAX(COALESCE(t_end, t_start)) as newest
-            FROM entities
+            SELECT GREATEST(
+                COALESCE((SELECT MAX(t_end) FROM entities WHERE t_end IS NOT NULL), '1970-01-01'::timestamptz),
+                COALESCE((SELECT MAX(t_start) FROM entities), '1970-01-01'::timestamptz)
+            )
             """
         )
 
@@ -88,20 +109,26 @@ async def stats():
         for row in type_counts
     ]
 
-    return StatsResponse(
+    response = StatsResponse(
         total_entities=total_result or 0,
         entities_by_type=entities_by_type,
         time_coverage=TimeRange(
-            oldest=time_range["oldest"],
-            newest=time_range["newest"]
+            oldest=oldest,
+            newest=newest
         ),
         database=DatabaseStats(
             size_mb=round(db_stats["size_mb"], 2),
             table_size_mb=round(db_stats["table_size_mb"], 2),
             index_size_mb=round(db_stats["index_size_mb"], 2)
         ),
-        uptime_seconds=round(time.time() - _start_time, 1)
+        uptime_seconds=round(current_time - _start_time, 1)
     )
+
+    # Cache the response (convert to dict for copying)
+    _stats_cache = response.model_dump()
+    _stats_cache_time = current_time
+
+    return response
 
 
 if __name__ == "__main__":

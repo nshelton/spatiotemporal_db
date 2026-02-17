@@ -10,6 +10,10 @@ testpaths = ["tests"]
 filterwarnings = [
     "ignore::DeprecationWarning",
 ]
+markers = [
+    "integration: marks tests as integration tests (require real database)",
+    "performance: marks tests as performance tests (may be slow)",
+]
 
 [tool.ruff]
 line-length = 100

@@ -44,10 +44,10 @@ async def db_pool() -> AsyncGenerator[asyncpg.Pool, None]:
     # Create pool
     pool = await asyncpg.create_pool(url, min_size=1, max_size=5)
 
-    # Run migrations (safe to run multiple times due to IF NOT EXISTS)
-    migrations_path = Path(__file__).parent.parent / "migrations" / "001_initial.sql"
+    # Run schema (safe to run multiple times due to IF NOT EXISTS)
+    schema_path = Path(__file__).parent.parent / "schema.sql"
     async with pool.acquire() as conn:
-        await conn.execute(migrations_path.read_text())
+        await conn.execute(schema_path.read_text())
 
     yield pool
 
