@@ -3,9 +3,10 @@ import time
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from starlette.middleware.gzip import GZipMiddleware
 
 from app.db import close_pool, init_pool
-from app.routes import entity, query
+from app.routes import entity, export, query
 
 # Track server start time for uptime
 _start_time = time.time()
@@ -33,9 +34,12 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+app.add_middleware(GZipMiddleware, minimum_size=1000)
+
 # Include routers
 app.include_router(entity.router)
 app.include_router(query.router)
+app.include_router(export.router)
 
 
 @app.get("/health")

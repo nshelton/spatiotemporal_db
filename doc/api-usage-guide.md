@@ -204,7 +204,124 @@ const nycPhotos = {
 
 ---
 
-### 3. Statistics
+### 3. Export All Entities (Streaming)
+
+Stream the entire database (or a filtered subset) as newline-delimited JSON (NDJSON). Designed for bulk data transfer of millions of rows without memory issues on either side.
+
+**Endpoint**: `GET /v1/query/export`
+
+**Use Cases**:
+- Full database export / backup
+- Syncing all data to another system
+- Offline analysis of the complete dataset
+- Building local indexes or caches
+
+**Query Parameters**:
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `types` | `string[]` | No | Entity types to export. Omit for all types. Repeat for multiple: `?types=location.gps&types=music` |
+| `order` | `string` | No | `"newest"` (default) or `"oldest"`. Controls timestamp sort order. |
+
+**Response Format**: `application/x-ndjson` (newline-delimited JSON)
+
+The first line is a metadata object with the total count. Each subsequent line is one entity:
+
+```
+{"total":4000000}
+{"id":"...","type":"location.gps","t_start":"2025-01-01T00:00:00+00:00","lat":34.05,...}
+{"id":"...","type":"music","t_start":"2025-01-01T00:05:00+00:00","name":"Karma Police",...}
+...
+```
+
+**Performance Notes**:
+- Uses PostgreSQL server-side cursors — constant memory usage regardless of dataset size
+- Bypasses Pydantic serialization for maximum throughput
+- Send `Accept-Encoding: gzip` for ~70-80% size reduction (~300-500 MB instead of ~1.5 GB for 4M rows)
+- First byte arrives almost instantly; the client can begin parsing before the full response is received
+
+**Examples**:
+
+```javascript
+// Stream all entities with progress tracking
+async function exportAll(onProgress) {
+  const response = await fetch(`${API_BASE}/v1/query/export`, {
+    headers: { 'X-API-Key': API_KEY, 'Accept-Encoding': 'gzip' }
+  });
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let total = 0;
+  let count = 0;
+  const entities = [];
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop(); // Keep incomplete last line in buffer
+
+    for (const line of lines) {
+      if (!line) continue;
+      const obj = JSON.parse(line);
+
+      if ('total' in obj) {
+        total = obj.total;
+        console.log(`Expecting ${total} entities`);
+        continue;
+      }
+
+      entities.push(obj);
+      count++;
+      if (onProgress && count % 10000 === 0) {
+        onProgress(count, total);
+      }
+    }
+  }
+
+  return entities;
+}
+
+// Export only specific types
+const response = await fetch(
+  `${API_BASE}/v1/query/export?types=location.gps&types=music`,
+  { headers: { 'X-API-Key': API_KEY } }
+);
+```
+
+```bash
+# Export all entities to a file (with gzip)
+curl -H "X-API-Key: your-key" -H "Accept-Encoding: gzip" \
+  --compressed \
+  http://localhost:8000/v1/query/export > export.ndjson
+
+# Export only location data
+curl -H "X-API-Key: your-key" --compressed \
+  "http://localhost:8000/v1/query/export?types=location.gps" > locations.ndjson
+
+# Count lines (entities) in export
+wc -l export.ndjson
+```
+
+```python
+import httpx
+
+# Stream export with progress
+with httpx.stream('GET', f'{API_BASE}/v1/query/export',
+                   headers={'X-API-Key': API_KEY}) as r:
+    for line in r.iter_lines():
+        obj = json.loads(line)
+        if 'total' in obj:
+            print(f"Exporting {obj['total']} entities...")
+            continue
+        process_entity(obj)
+```
+
+---
+
+### 4. Statistics
 
 Get database statistics and overview.
 
@@ -251,7 +368,7 @@ console.log(`Types: ${data.entities_by_type.map(t => `${t.type} (${t.count})`).j
 
 ---
 
-### 4. Health Check
+### 5. Health Check
 
 Check if the API is running.
 
@@ -415,6 +532,8 @@ async function loadHeatmapData(bbox, start, end) {
 4. **Use bbox for maps**: More efficient than time queries for spatial views
 5. **Random sampling**: Use `order: "random"` for map markers to get uniform distribution
 6. **Pagination**: For large datasets, query smaller time windows sequentially
+7. **Full export**: Use `GET /v1/query/export` for bulk data transfer — streams NDJSON with constant memory
+8. **Compression**: The API supports gzip via `Accept-Encoding: gzip` — reduces export payloads by ~70-80%
 
 ---
 
