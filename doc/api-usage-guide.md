@@ -204,7 +204,34 @@ const nycPhotos = {
 
 ---
 
-### 3. Export All Entities (Streaming)
+### 3. Serve Photo Files
+
+**Endpoints**:
+- `GET /v1/photo/{uuid}` — original file (any format)
+- `GET /v1/photo/{uuid}/thumb` — JPEG thumbnail (max `THUMB_SIZE` px, default 400)
+
+**Auth**: `X-API-Key` header **or** `?api_key=` query param. The query param form lets you use
+the URL directly in `<img src>` and WebGL textures without fetch + blob URL gymnastics.
+
+**Requires** `PHOTO_ROOT` set in `.env`.
+
+```javascript
+const KEY = 'your-key';
+const BASE = 'http://localhost:8000';
+
+// Drop directly into an <img> — no JS fetch needed
+img.src = `${BASE}/v1/photo/${entity.id}/thumb?api_key=${KEY}`;
+
+// Full-res
+img.src = `${BASE}/v1/photo/${entity.id}?api_key=${KEY}`;
+```
+
+Thumbnails are generated on first request and cached to `PHOTO_ROOT/.daruma_thumbs/`.
+Subsequent requests are served instantly from disk.
+
+---
+
+### 4. Export All Entities (Streaming)
 
 Stream the entire database (or a filtered subset) as newline-delimited JSON (NDJSON). Designed for bulk data transfer of millions of rows without memory issues on either side.
 
@@ -466,7 +493,59 @@ async function loadMapData(bounds, types) {
 }
 ```
 
-### Pattern 3: Location Trail
+### Pattern 3: Photo Map Markers with Thumbnails
+
+Fetch photos in a bbox and render each as a thumbnail marker.
+
+```javascript
+const KEY = 'your-key';
+const BASE = 'http://localhost:8000';
+
+async function loadPhotoMarkers(bounds) {
+  const { west, south, east, north } = bounds;
+
+  const { entities } = await fetch(`${BASE}/v1/query/bbox`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-API-Key': KEY },
+    body: JSON.stringify({
+      types: ['photo'],
+      bbox: [west, south, east, north],
+      limit: 500,
+      order: 'random'   // spread markers evenly across the viewport
+    })
+  }).then(r => r.json());
+
+  return entities
+    .filter(e => e.lat && e.lon)
+    .map(e => ({
+      lat: e.lat,
+      lon: e.lon,
+      t: e.t_start,
+      name: e.name,
+      camera: e.payload?.Model,
+      // Use directly as <img src> — auth via query param
+      thumbUrl: `${BASE}/v1/photo/${e.id}/thumb?api_key=${KEY}`,
+      fullUrl:  `${BASE}/v1/photo/${e.id}?api_key=${KEY}`,
+    }));
+}
+
+// Example: Leaflet marker with thumbnail
+markers.forEach(({ lat, lon, thumbUrl, name }) => {
+  const icon = L.divIcon({
+    html: `<img src="${thumbUrl}" style="width:60px;height:60px;object-fit:cover;border-radius:4px;border:2px solid white;">`,
+    iconSize: [60, 60],
+  });
+  L.marker([lat, lon], { icon }).bindPopup(name).addTo(map);
+});
+```
+
+**Performance note**: Use `order: "random"` for map views so markers are spread
+evenly rather than clustered at the start of your date range. Use `limit: 500`
+or less — thumbnails are loaded by the browser in parallel but each is a round-trip.
+
+---
+
+### Pattern 4: Location Trail
 
 Get movement path with resampling for performance.
 
@@ -616,18 +695,47 @@ async function queryWithErrorHandling(endpoint, body) {
 ### photo
 ```json
 {
+  "id": "3f2a1b4c-8e91-4d02-a7f3-1c2b3d4e5f60",
   "type": "photo",
   "t_start": "2026-02-16T14:30:00Z",
   "lat": 34.0522,
   "lon": -118.2437,
-  "name": "IMG_1234.jpg",
+  "name": "IMG_1234",
+  "color": "#2196F3",
+  "source": "photos",
   "loc_source": "native",
   "payload": {
     "filename": "IMG_1234.jpg",
-    "camera": "iPhone 15 Pro",
-    "dimensions": "4032x3024"
+    "timestamp_source": "gps_utc",
+    "Make": "Apple",
+    "Model": "iPhone 14 Pro",
+    "FocalLength": "6.765625",
+    "FNumber": "1.78",
+    "ISOSpeedRatings": "250",
+    "altitude": 45.3
   }
 }
+```
+
+Thumbnail: `GET /v1/photo/3f2a1b4c-.../thumb?api_key=KEY`
+Full res:  `GET /v1/photo/3f2a1b4c-...?api_key=KEY`
+
+**Client helper** — paste this into your app:
+
+```javascript
+const DARUMA_BASE = 'http://localhost:8000';
+const DARUMA_KEY  = 'your-key-here';
+
+function photoThumbUrl(entityId) {
+  return `${DARUMA_BASE}/v1/photo/${entityId}/thumb?api_key=${DARUMA_KEY}`;
+}
+
+function photoFullUrl(entityId) {
+  return `${DARUMA_BASE}/v1/photo/${entityId}?api_key=${DARUMA_KEY}`;
+}
+
+// Usage — entity.id comes straight from any query response:
+img.src = photoThumbUrl(entity.id);
 ```
 
 ---

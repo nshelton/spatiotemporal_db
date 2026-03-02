@@ -153,6 +153,59 @@ API returns lat/lon for convenience.
   "payload": { "accuracy_m": 12.3 }
 }
 
+Entity Types
+------------
+
+### photo
+
+Ingested by `ingesters/photos.py` from EXIF metadata. One entity per file.
+
+| Field | Value |
+|---|---|
+| `type` | `"photo"` |
+| `source` | `"photos"` |
+| `external_id` | relative file path from root dir (`2023/Vacation/IMG_0042.jpg`) |
+| `t_start` | GPS timestamp (UTC) → EXIF DateTimeOriginal → file mtime, in that priority order |
+| `t_end` | `null` (instantaneous) |
+| `lat` / `lon` | from EXIF GPS tags (DMS → decimal); `null` if no GPS in EXIF |
+| `loc_source` | `"native"` if GPS present, `null` otherwise |
+| `color` | `"#2196F3"` (blue) |
+| `name` | filename stem (`IMG_0042`) |
+
+Payload shape:
+```json
+{
+  "filename": "IMG_0042.jpg",
+  "timestamp_source": "gps_utc",
+  "Make": "Apple",
+  "Model": "iPhone 14 Pro",
+  "LensModel": "iPhone 14 Pro back triple camera 6.765mm f/1.78",
+  "FocalLength": "6.765625",
+  "ExposureTime": "1/120",
+  "FNumber": "1.78",
+  "ISOSpeedRatings": "250",
+  "altitude": 45.3
+}
+```
+
+`timestamp_source` values:
+- `"gps_utc"` — most accurate, from EXIF GPS block (always UTC)
+- `"exif_DateTimeOriginal"` — from EXIF, interpreted with `--timezone` offset
+- `"file_mtime"` — fallback, least reliable
+
+### location.gps
+
+Ingested by `ingesters/location_data.py` from Arc app daily JSON exports.
+One entity per GPS sample (~1–5 second intervals while moving).
+
+| Field | Value |
+|---|---|
+| `type` | `"location.gps"` |
+| `source` | `"arc"` |
+| `color` | `"#4CAF50"` (green) |
+
+---
+
 Endpoints (v0)
 1) Insert single (with optional upsert)
 

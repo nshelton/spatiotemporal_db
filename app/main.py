@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from starlette.middleware.gzip import GZipMiddleware
 
 from app.db import close_pool, init_pool
-from app.routes import entity, export, query
+from app.routes import entity, export, photo, query
 
 # Track server start time for uptime
 _start_time = time.time()
@@ -40,6 +40,7 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)
 app.include_router(entity.router)
 app.include_router(query.router)
 app.include_router(export.router)
+app.include_router(photo.router)
 
 
 @app.get("/health")
